@@ -46,7 +46,6 @@ class FitmealController extends Controller {
         $user = Auth::user();
         if ($user->role === 'admin') return redirect('/admin');
 
-        // Logika Auto-Premium Testing
         if ($request->query('status_code') == '200' || $request->query('transaction_status') == 'settlement') {
             $user->update([
                 'is_subscribed' => true,
@@ -61,13 +60,18 @@ class FitmealController extends Controller {
         $prof = json_decode($user->profile_data);
         $userBmr = $prof->bmr ?? 1500;
 
-        $allPlans = DB::table('daily_plans')->whereDate('plan_date', now())->get();
+        $allPlans = DB::table('daily_plans')->get();
 
-        // Filter otomatis berdasarkan kategori BMR user
         if ($userBmr <= 1600) {
-            $nutritionPlans = $allPlans->where('type', 'nutrition')->where('calories', '<=', 500)->take(20);
+            $nutritionPlans = $allPlans->where('type', 'nutrition')
+                                       ->where('calories', '<=', 500)
+                                       ->shuffle()
+                                       ->take(20);
         } else {
-            $nutritionPlans = $allPlans->where('type', 'nutrition')->where('calories', '>', 500)->take(20);
+            $nutritionPlans = $allPlans->where('type', 'nutrition')
+                                       ->where('calories', '>', 500)
+                                       ->shuffle()
+                                       ->take(20);
         }
 
         $workoutPlans = $allPlans->where('type', 'workout')->shuffle()->take(10);
@@ -76,9 +80,27 @@ class FitmealController extends Controller {
         return view('dashboard', compact('user', 'plans'));
     }
 
+    // --- FITUR EDIT PROFIL MANDIRI (BARU) ---
+    public function updateProfile(Request $request) {
+        $user = Auth::user();
+
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|string|email|max:255|unique:users,email,' . $user->id,
+        ]);
+
+        $user->update([
+            'name' => $request->name,
+            'email' => $request->email,
+        ]);
+
+        return back()->with('success', 'Profil Anda berhasil diperbarui!');
+    }
+
     // --- BMI CALCULATION ---
     public function bmi(Request $req) {
         $req->validate(['weight' => 'required|numeric', 'height' => 'required|numeric']);
+
         $tb = $req->height / 100;
         $bmi = $req->weight / ($tb * $tb);
         $bmr = (10 * $req->weight) + (6.25 * $req->height) - (5 * 25) + 5;
@@ -93,10 +115,13 @@ class FitmealController extends Controller {
             'bmi' => number_format($bmi, 1),
             'bmr' => round($bmr),
             'nutrisi' => [
-                'protein' => round($protein, 1), 'karbo' => round($karbo, 1), 'lemak' => round($lemak, 1)
+                'protein' => round($protein, 1),
+                'karbo' => round($karbo, 1),
+                'lemak' => round($lemak, 1)
             ]
         ])]);
-        return back()->with('success', 'Data Nutrisi Berhasil Diperbarui!');
+
+        return redirect('/dashboard')->with('success', 'Kalkulasi Berhasil! Menu Anda telah diperbarui.');
     }
 
     // --- PAYMENT ---
@@ -135,12 +160,11 @@ class FitmealController extends Controller {
         }
     }
 
-    // --- ADMIN PANEL (UPDATED) ---
+    // --- ADMIN PANEL ---
     public function admin() {
         $users = User::where('role', 'user')->get();
         $plans = DB::table('daily_plans')->orderBy('created_at', 'desc')->get();
 
-        // AMBIL DATA REAL UNTUK GRAFIK (7 Hari Terakhir)
         $visitors = DB::table('visitor_logs')
             ->select('visit_date', DB::raw('count(*) as total'))
             ->where('visit_date', '>=', now()->subDays(6))
@@ -158,9 +182,9 @@ class FitmealController extends Controller {
 
     public function storePlan(Request $req) {
         DB::table('daily_plans')->insert([
-            'plan_date' => now(), // Otomatis tanggal hari ini
+            'plan_date' => now(),
             'type' => $req->type,
-            'category' => $req->category, // low, ideal, high
+            'category' => $req->category,
             'title' => $req->title,
             'description' => $req->description,
             'calories' => $req->calories,
