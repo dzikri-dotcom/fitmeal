@@ -1,0 +1,26 @@
+version: '3'
+services:
+  app:
+    build: .
+    container_name: fitmeal-app
+    volumes:
+      - .:/var/www
+    networks:
+      - fitmeal
+
+  nginx:
+    image: nginx
+    container_name: fitmeal-nginx
+    ports:
+      - "8000:80"
+    volumes:
+      - .:/var/www
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - app
+    networks:
+      - fitmeal
+
+networks:
+  fitmeal:
+    driver: bridge
